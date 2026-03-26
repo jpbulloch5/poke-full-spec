@@ -21,6 +21,7 @@ Do **not** use this agent for:
 - Writing or modifying code (use `custom-coder`)
 - Generating specifications or contracts (use `prompt-contract-gen`)
 - Exploratory research or answering questions about the codebase (use `Explore`)
+- Evaluating or optimizing agent configurations (use `meta-evaluator`)
 - Simple questions with obvious answers
 
 ## Core Workflow
