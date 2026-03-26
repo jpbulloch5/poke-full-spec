@@ -55,6 +55,10 @@ static EWRAM_DATA u16 sDroughtFrameDelay = 0;
 // with processed palette data. Restored on fade-in so weather processing is
 // applied to the original colors instead of compounding each fade cycle.
 static EWRAM_DATA u16 sSavedUnfadedPalettes[PLTT_BUFFER_SIZE] = {};
+// TRUE after a fade-out saves palettes into sSavedUnfadedPalettes.
+// Cleared on fade-in restore and on full weather reinit (StartWeather)
+// so that unpaired fade-ins (e.g. returning from battle) skip the restore.
+static EWRAM_DATA bool8 sSavedPalettesValid = FALSE;
 
 static void Task_WeatherMain(u8 taskId);
 static void Task_WeatherInit(u8 taskId);
@@ -180,6 +184,7 @@ void StartWeather(void)
         gWeatherPtr->palProcessingState = WEATHER_PAL_STATE_IDLE;
         gWeatherPtr->readyForInit = FALSE;
         gWeatherPtr->weatherChangeComplete = TRUE;
+        sSavedPalettesValid = FALSE;
         gWeatherPtr->taskId = CreateTask(Task_WeatherInit, 80);
     }
 }
@@ -800,6 +805,7 @@ void FadeScreen(u8 mode, s8 delay)
             // not compound across repeated fade cycles (e.g. Lavender Tower
             // purified zone rest event at night).
             CpuFastCopy(gPlttBufferUnfaded, sSavedUnfadedPalettes, PLTT_SIZE);
+            sSavedPalettesValid = TRUE;
             CpuFastCopy(gPlttBufferFaded, gPlttBufferUnfaded, PLTT_SIZE);
         }
 
@@ -811,10 +817,15 @@ void FadeScreen(u8 mode, s8 delay)
         gWeatherPtr->fadeDestColor = fadeColor;
         if (useWeatherPal)
         {
-            // Restore the original unfaded palettes so weather processing
-            // (gamma shifts, fog blend, night tint) is applied to clean
-            // originals rather than to already-processed data.
-            CpuFastCopy(sSavedUnfadedPalettes, gPlttBufferUnfaded, PLTT_SIZE);
+            // Restore the original unfaded palettes only when a matching
+            // fade-out saved them. Unpaired fade-ins (e.g. returning from
+            // battle where the overworld was fully reloaded) skip the
+            // restore so freshly loaded palettes are not overwritten.
+            if (sSavedPalettesValid)
+            {
+                CpuFastCopy(sSavedUnfadedPalettes, gPlttBufferUnfaded, PLTT_SIZE);
+                sSavedPalettesValid = FALSE;
+            }
             gWeatherPtr->fadeScreenCounter = 0;
         }
         else
@@ -879,6 +890,7 @@ void FadeSelectedPals(u8 mode, s8 delay, u32 selectedPalettes)
         if (useWeatherPal)
         {
             CpuFastCopy(gPlttBufferUnfaded, sSavedUnfadedPalettes, PLTT_SIZE);
+            sSavedPalettesValid = TRUE;
             CpuFastCopy(gPlttBufferFaded, gPlttBufferUnfaded, PLTT_SIZE);
         }
 
@@ -890,7 +902,11 @@ void FadeSelectedPals(u8 mode, s8 delay, u32 selectedPalettes)
         gWeatherPtr->fadeDestColor = fadeColor;
         if (useWeatherPal)
         {
-            CpuFastCopy(sSavedUnfadedPalettes, gPlttBufferUnfaded, PLTT_SIZE);
+            if (sSavedPalettesValid)
+            {
+                CpuFastCopy(sSavedUnfadedPalettes, gPlttBufferUnfaded, PLTT_SIZE);
+                sSavedPalettesValid = FALSE;
+            }
             gWeatherPtr->fadeScreenCounter = 0;
         }
         else
