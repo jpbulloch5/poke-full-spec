@@ -98,7 +98,8 @@ Spearow · Rattata · Ekans · Sandshrew
 - **Rock Smash (B1F):** Geodude · Graveler
 
 ### Pokemon Tower (Lavender Town)
-- **Floors 3, 5, 7:** Gastly · Haunter · Cubone · ★Shuppet · ★Duskull
+- **Floor 3:** Gastly · Cubone · ★Shuppet · ★Duskull · ★Misdreavus
+- **Floors 5, 7:** Gastly · Haunter · Cubone · ★Shuppet · ★Duskull
 - **Floor 4:** Gastly · Haunter · Cubone · ★Shuppet · 🌙★Houndour (replaces ★Duskull at night)
 - **Floor 6:** Gastly · Haunter · Cubone · ★Duskull · 🌙★Houndour (replaces ★Shuppet at night)
 
