@@ -51,6 +51,14 @@ static EWRAM_DATA struct Weather sWeather = {};
 static EWRAM_DATA u8 sFieldEffectPaletteGammaTypes[32] = {};
 static EWRAM_DATA const u8 *sPaletteGammaTypes = NULL;
 static EWRAM_DATA u16 sDroughtFrameDelay = 0;
+// Snapshot of gPlttBufferUnfaded taken before a weather fade-out overwrites it
+// with processed palette data. Restored on fade-in so weather processing is
+// applied to the original colors instead of compounding each fade cycle.
+static EWRAM_DATA u16 sSavedUnfadedPalettes[PLTT_BUFFER_SIZE] = {};
+// TRUE after a fade-out saves palettes into sSavedUnfadedPalettes.
+// Cleared on fade-in restore and on full weather reinit (StartWeather)
+// so that unpaired fade-ins (e.g. returning from battle) skip the restore.
+static EWRAM_DATA bool8 sSavedPalettesValid = FALSE;
 
 static void Task_WeatherMain(u8 taskId);
 static void Task_WeatherInit(u8 taskId);
@@ -70,7 +78,6 @@ static void DoNothing(void);
 static void ApplyFogBlend(u8 blendCoeff, u16 blendColor);
 static bool8 LightenSpritePaletteInFog(u8 paletteIndex);
 static void ApplyNightTintToFadedRange(u16 palOffset, u16 count);
-static void RemoveNightTintFromUnfadedRange(u16 palOffset, u16 count);
 static void CheckNightTransition(void);
 
 struct Weather *const gWeatherPtr = &sWeather;
@@ -177,6 +184,7 @@ void StartWeather(void)
         gWeatherPtr->palProcessingState = WEATHER_PAL_STATE_IDLE;
         gWeatherPtr->readyForInit = FALSE;
         gWeatherPtr->weatherChangeComplete = TRUE;
+        sSavedPalettesValid = FALSE;
         gWeatherPtr->taskId = CreateTask(Task_WeatherInit, 80);
     }
 }
@@ -460,38 +468,6 @@ static void ApplyNightTintToFadedRange(u16 palOffset, u16 count)
         u8 g = c.g + (((NIGHT_BLEND_G - (s16)c.g) * NIGHT_BLEND_COEFF) >> 4);
         u8 b = c.b + (((NIGHT_BLEND_B - (s16)c.b) * NIGHT_BLEND_COEFF) >> 4);
         gPlttBufferFaded[palOffset] = (b << 10) | (g << 5) | r;
-        palOffset++;
-    }
-}
-
-// Reconstructs the pre-night color from a night-tinted color.
-// Tint formula is: out = in + ((target - in) * coeff) / 16.
-// With coeff=7, invert as: in ~= (16*out - 7*target) / 9.
-static void RemoveNightTintFromUnfadedRange(u16 palOffset, u16 count)
-{
-    u16 i;
-
-    for (i = 0; i < count; i++)
-    {
-        struct RGBColor c = *(struct RGBColor *)&gPlttBufferUnfaded[palOffset];
-        s16 r = ((s16)16 * c.r - (s16)7 * NIGHT_BLEND_R + 4) / 9;
-        s16 g = ((s16)16 * c.g - (s16)7 * NIGHT_BLEND_G + 4) / 9;
-        s16 b = ((s16)16 * c.b - (s16)7 * NIGHT_BLEND_B + 4) / 9;
-
-        if (r < 0)
-            r = 0;
-        else if (r > 31)
-            r = 31;
-        if (g < 0)
-            g = 0;
-        else if (g > 31)
-            g = 31;
-        if (b < 0)
-            b = 0;
-        else if (b > 31)
-            b = 31;
-
-        gPlttBufferUnfaded[palOffset] = ((u16)b << 10) | ((u16)g << 5) | (u16)r;
         palOffset++;
     }
 }
@@ -823,9 +799,14 @@ void FadeScreen(u8 mode, s8 delay)
     {
         if (useWeatherPal)
         {
+            // Save the original unfaded palettes before overwriting them
+            // with weather-processed data. The fade-in path restores these
+            // so weather processing is applied to clean originals and does
+            // not compound across repeated fade cycles (e.g. Lavender Tower
+            // purified zone rest event at night).
+            CpuFastCopy(gPlttBufferUnfaded, sSavedUnfadedPalettes, PLTT_SIZE);
+            sSavedPalettesValid = TRUE;
             CpuFastCopy(gPlttBufferFaded, gPlttBufferUnfaded, PLTT_SIZE);
-            if (IsNightTime())
-                RemoveNightTintFromUnfadedRange(0, PLTT_BUFFER_SIZE);
         }
 
         BeginNormalPaletteFade(PALETTES_ALL, delay, 0, 16, fadeColor);
@@ -835,9 +816,22 @@ void FadeScreen(u8 mode, s8 delay)
     {
         gWeatherPtr->fadeDestColor = fadeColor;
         if (useWeatherPal)
+        {
+            // Restore the original unfaded palettes only when a matching
+            // fade-out saved them. Unpaired fade-ins (e.g. returning from
+            // battle where the overworld was fully reloaded) skip the
+            // restore so freshly loaded palettes are not overwritten.
+            if (sSavedPalettesValid)
+            {
+                CpuFastCopy(sSavedUnfadedPalettes, gPlttBufferUnfaded, PLTT_SIZE);
+                sSavedPalettesValid = FALSE;
+            }
             gWeatherPtr->fadeScreenCounter = 0;
+        }
         else
+        {
             BeginNormalPaletteFade(PALETTES_ALL, delay, 16, 0, fadeColor);
+        }
 
         gWeatherPtr->palProcessingState = WEATHER_PAL_STATE_SCREEN_FADING_IN;
         gWeatherPtr->fadeInActive = 1;
@@ -895,9 +889,9 @@ void FadeSelectedPals(u8 mode, s8 delay, u32 selectedPalettes)
     {
         if (useWeatherPal)
         {
+            CpuFastCopy(gPlttBufferUnfaded, sSavedUnfadedPalettes, PLTT_SIZE);
+            sSavedPalettesValid = TRUE;
             CpuFastCopy(gPlttBufferFaded, gPlttBufferUnfaded, PLTT_SIZE);
-            if (IsNightTime())
-                RemoveNightTintFromUnfadedRange(0, PLTT_BUFFER_SIZE);
         }
 
         BeginNormalPaletteFade(selectedPalettes, delay, 0, 16, fadeColor);
@@ -907,9 +901,18 @@ void FadeSelectedPals(u8 mode, s8 delay, u32 selectedPalettes)
     {
         gWeatherPtr->fadeDestColor = fadeColor;
         if (useWeatherPal)
+        {
+            if (sSavedPalettesValid)
+            {
+                CpuFastCopy(sSavedUnfadedPalettes, gPlttBufferUnfaded, PLTT_SIZE);
+                sSavedPalettesValid = FALSE;
+            }
             gWeatherPtr->fadeScreenCounter = 0;
+        }
         else
+        {
             BeginNormalPaletteFade(selectedPalettes, delay, 16, 0, fadeColor);
+        }
 
         gWeatherPtr->palProcessingState = WEATHER_PAL_STATE_SCREEN_FADING_IN;
         gWeatherPtr->fadeInActive = 1;

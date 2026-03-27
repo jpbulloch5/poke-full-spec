@@ -3306,7 +3306,7 @@
               {
                 "min_level": 20,
                 "max_level": 20,
-                "species": "SPECIES_HAUNTER"
+                "species": "SPECIES_MISDREAVUS"
               }
             ]
           }
@@ -15848,7 +15848,7 @@
               {
                 "min_level": 20,
                 "max_level": 20,
-                "species": "SPECIES_HAUNTER"
+                "species": "SPECIES_MISDREAVUS"
               }
             ],
             "encounter_rate": 2

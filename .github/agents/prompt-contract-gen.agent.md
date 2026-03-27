@@ -21,6 +21,7 @@ Do **not** use this agent for:
 - Simple, single-step tasks with obvious intent (e.g., "fix this typo")
 - Tasks that are purely exploratory or research-oriented
 - Requests where the user has already provided a detailed specification
+- Evaluating or optimizing agent configurations (use `meta-evaluator`)
 
 ## Core Workflow
 
@@ -33,6 +34,7 @@ Read the user's request carefully. Identify:
 - **Ambiguities** — places where multiple interpretations exist
 - **Risks** — things that could go wrong or have unintended side-effects
 - **Dependencies** — other systems, files, or constraints that interact with the request
+- **Known pitfalls** — check `.github/agent-memory/lessons-learned.md` for entries relevant to the requested change
 
 ### 2. Assess User Knowledge Level
 
